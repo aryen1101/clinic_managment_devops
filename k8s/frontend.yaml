@@ -1,0 +1,50 @@
+# IMAGE_OWNER and IMAGE_TAG are replaced by the CI pipeline (sed) with the GHCR owner and commit SHA.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: clinic-frontend
+  namespace: clinic
+  labels: {app: clinic-frontend}
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: clinic-frontend}
+  template:
+    metadata:
+      labels: {app: clinic-frontend}
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: frontend
+          image: ghcr.io/IMAGE_OWNER/clinic-frontend:IMAGE_TAG
+          imagePullPolicy: IfNotPresent
+          ports: [{containerPort: 8080, name: http}]
+          env:
+            - name: BACKEND_URL           # nginx proxies /api to this address
+              value: http://clinic-backend:8000
+          livenessProbe:
+            httpGet: {path: /nginx-health, port: http}
+            periodSeconds: 15
+          readinessProbe:
+            httpGet: {path: /nginx-health, port: http}
+            periodSeconds: 10
+          resources:
+            requests: {cpu: 50m, memory: 64Mi}
+            limits: {cpu: 200m, memory: 128Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: ["ALL"]}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: clinic-frontend
+  namespace: clinic
+  labels: {app: clinic-frontend}
+spec:
+  type: ClusterIP
+  selector: {app: clinic-frontend}
+  ports: [{port: 80, targetPort: http, name: http}]

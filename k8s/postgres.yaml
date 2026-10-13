@@ -1,0 +1,50 @@
+# PostgreSQL for the CI cluster. Uses emptyDir (data is thrown away with the cluster).
+# The Helm chart uses a StatefulSet + PersistentVolumeClaim instead.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: clinic-postgres
+  namespace: clinic
+  labels: {app: clinic-postgres}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: clinic-postgres}
+  template:
+    metadata:
+      labels: {app: clinic-postgres}
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:17-alpine
+          ports: [{containerPort: 5432, name: postgres}]
+          env:
+            - name: POSTGRES_DB
+              valueFrom: {configMapKeyRef: {name: clinic-config, key: DB_NAME}}
+            - name: POSTGRES_USER
+              valueFrom: {secretKeyRef: {name: clinic-db-secret, key: DB_USER}}
+            - name: POSTGRES_PASSWORD
+              valueFrom: {secretKeyRef: {name: clinic-db-secret, key: DB_PASSWORD}}
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          readinessProbe:
+            exec: {command: ["sh", "-c", "pg_isready -U \"$POSTGRES_USER\" -d \"$POSTGRES_DB\""]}
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {cpu: 500m, memory: 512Mi}
+          volumeMounts:
+            - {name: data, mountPath: /var/lib/postgresql/data}
+      volumes:
+        - name: data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: clinic-postgres
+  namespace: clinic
+spec:
+  selector: {app: clinic-postgres}
+  ports: [{port: 5432, targetPort: 5432, name: postgres}]

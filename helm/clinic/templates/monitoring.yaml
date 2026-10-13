@@ -1,0 +1,74 @@
+{{- /* Only rendered when kube-prometheus-stack CRDs exist in the cluster, so the chart also installs without monitoring. */ -}}
+{{- $hasPromOperator := .Capabilities.APIVersions.Has "monitoring.coreos.com/v1" }}
+
+{{- if and .Values.monitoring.serviceMonitor.enabled $hasPromOperator }}
+---
+# Tells Prometheus to scrape the backend's /metrics endpoint every 15s.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "clinic.backend" . }}
+  labels:
+    release: {{ .Values.monitoring.serviceMonitor.releaseLabel }}
+    {{- include "clinic.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      app: {{ include "clinic.backend" . }}
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 15s
+{{- end }}
+
+{{- if and .Values.monitoring.prometheusRule.enabled $hasPromOperator }}
+---
+# Alerts shown in Prometheus -> Alerts (and sent to Alertmanager).
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ .Release.Name }}-alerts
+  labels:
+    release: {{ .Values.monitoring.serviceMonitor.releaseLabel }}
+    {{- include "clinic.labels" . | nindent 4 }}
+spec:
+  groups:
+    - name: clinic.rules
+      rules:
+        - alert: ClinicBackendDown
+          expr: absent(up{job="{{ include "clinic.backend" . }}"} == 1)
+          for: 2m
+          labels: {severity: critical}
+          annotations:
+            summary: No healthy clinic backend pod is being scraped
+        - alert: ClinicHighErrorRate
+          expr: |
+            sum(rate(http_requests_total{job="{{ include "clinic.backend" . }}",status="5xx"}[5m]))
+              / clamp_min(sum(rate(http_requests_total{job="{{ include "clinic.backend" . }}"}[5m])), 1e-9) > 0.05
+          for: 5m
+          labels: {severity: warning}
+          annotations:
+            summary: More than 5% of backend requests are failing (5xx)
+        - alert: ClinicSlowResponses
+          expr: |
+            histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{job="{{ include "clinic.backend" . }}"}[5m])) by (le)) > 1
+          for: 10m
+          labels: {severity: warning}
+          annotations:
+            summary: p95 latency of the backend is above 1 second
+{{- end }}
+
+{{- if .Values.monitoring.grafanaDashboard.enabled }}
+---
+# Grafana's sidecar auto-imports any ConfigMap labelled grafana_dashboard=1.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-grafana-dashboard
+  labels:
+    grafana_dashboard: "1"
+    {{- include "clinic.labels" . | nindent 4 }}
+data:
+  clinic-dashboard.json: |-
+    {{- .Files.Get "dashboards/clinic-dashboard.json" | nindent 4 }}
+{{- end }}

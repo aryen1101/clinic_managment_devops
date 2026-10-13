@@ -1,0 +1,19 @@
+# AWS EKS (created by terraform/). Images come from GHCR, tag = commit SHA.
+#   helm upgrade --install clinic ./helm/clinic -n clinic --create-namespace \
+#     -f helm/clinic/values-prod.yaml --set backend.tag=<sha> --set frontend.tag=<sha>
+config:
+  appEnv: production
+  logLevel: INFO
+
+postgres:
+  existingSecret: clinic-db-secret   # kubectl -n clinic create secret generic clinic-db-secret --from-literal=DB_USER=clinic --from-literal=DB_PASSWORD='<strong password>'
+  storage: 10Gi
+  storageClass: gp2
+
+ingress:
+  host: clinic.example.com
+
+hpa:
+  backend:
+    minReplicas: 2
+    maxReplicas: 10

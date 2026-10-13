@@ -1,0 +1,86 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "clinic.backend" . }}
+  labels:
+    app: {{ include "clinic.backend" . }}
+    {{- include "clinic.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.hpa.backend.enabled }}
+  replicas: {{ .Values.backend.replicas }}
+  {{- end }}
+  selector:
+    matchLabels:
+      app: {{ include "clinic.backend" . }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: {maxUnavailable: 0, maxSurge: 1}
+  template:
+    metadata:
+      labels:
+        app: {{ include "clinic.backend" . }}
+        {{- include "clinic.labels" . | nindent 8 }}
+      annotations:
+        # Changing the ConfigMap/Secret changes these hashes, which triggers a rolling restart.
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: backend
+          image: {{ include "clinic.image" (dict "name" "backend" "cfg" .Values.backend) }}
+          imagePullPolicy: {{ .Values.backend.pullPolicy }}
+          ports:
+            - {name: http, containerPort: 8000}
+          envFrom:
+            - configMapRef:
+                name: {{ include "clinic.config" . }}
+          env:
+            - name: DB_USER
+              valueFrom: {secretKeyRef: {name: {{ include "clinic.dbSecret" . }}, key: DB_USER}}
+            - name: DB_PASSWORD
+              valueFrom: {secretKeyRef: {name: {{ include "clinic.dbSecret" . }}, key: DB_PASSWORD}}
+          startupProbe:
+            httpGet: {path: /health, port: http}
+            periodSeconds: 3
+            failureThreshold: 40
+          livenessProbe:
+            httpGet: {path: /health, port: http}
+            periodSeconds: 15
+            failureThreshold: 3
+          readinessProbe:
+            httpGet: {path: /ready, port: http}
+            periodSeconds: 10
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.backend.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: ["ALL"]}
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "clinic.backend" . }}
+  labels:
+    app: {{ include "clinic.backend" . }}
+    {{- include "clinic.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    app: {{ include "clinic.backend" . }}
+  ports:
+    - {name: http, port: 8000, targetPort: http}

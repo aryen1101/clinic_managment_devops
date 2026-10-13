@@ -1,0 +1,7 @@
+apiVersion: v2
+name: clinic
+description: CareDesk Clinic Management System - React frontend, FastAPI backend, PostgreSQL
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+keywords: [clinic, fastapi, react, postgres]

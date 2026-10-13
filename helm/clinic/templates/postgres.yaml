@@ -1,0 +1,72 @@
+# PostgreSQL as a StatefulSet with a PersistentVolumeClaim, so data survives pod restarts.
+# (In production on AWS you would usually use Amazon RDS instead.)
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "clinic.postgres" . }}
+  labels:
+    app: {{ include "clinic.postgres" . }}
+    {{- include "clinic.labels" . | nindent 4 }}
+spec:
+  selector:
+    app: {{ include "clinic.postgres" . }}
+  ports:
+    - {name: postgres, port: 5432, targetPort: 5432}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "clinic.postgres" . }}
+  labels:
+    app: {{ include "clinic.postgres" . }}
+    {{- include "clinic.labels" . | nindent 4 }}
+spec:
+  serviceName: {{ include "clinic.postgres" . }}
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ include "clinic.postgres" . }}
+  template:
+    metadata:
+      labels:
+        app: {{ include "clinic.postgres" . }}
+      annotations:
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+    spec:
+      containers:
+        - name: postgres
+          image: {{ .Values.postgres.image }}
+          ports: [{containerPort: 5432, name: postgres}]
+          env:
+            - name: POSTGRES_DB
+              value: {{ .Values.postgres.database | quote }}
+            - name: POSTGRES_USER
+              valueFrom: {secretKeyRef: {name: {{ include "clinic.dbSecret" . }}, key: DB_USER}}
+            - name: POSTGRES_PASSWORD
+              valueFrom: {secretKeyRef: {name: {{ include "clinic.dbSecret" . }}, key: DB_PASSWORD}}
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          readinessProbe:
+            exec: {command: ["sh", "-c", "pg_isready -U \"$POSTGRES_USER\" -d \"$POSTGRES_DB\""]}
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            exec: {command: ["sh", "-c", "pg_isready -U \"$POSTGRES_USER\" -d \"$POSTGRES_DB\""]}
+            initialDelaySeconds: 30
+            periodSeconds: 15
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {cpu: 500m, memory: 512Mi}
+          volumeMounts:
+            - {name: data, mountPath: /var/lib/postgresql/data}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        {{- with .Values.postgres.storageClass }}
+        storageClassName: {{ . }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.postgres.storage }}

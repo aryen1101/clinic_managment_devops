@@ -1,0 +1,21 @@
+# Local Minikube / kind using images built on your laptop (no registry needed):
+#   docker compose build
+#   minikube image load clinic-backend:local
+#   minikube image load clinic-frontend:local
+#   helm upgrade --install clinic ./helm/clinic -n clinic --create-namespace -f helm/clinic/values-dev.yaml
+config:
+  appEnv: dev
+  logLevel: DEBUG
+
+backend:
+  image: clinic-backend
+  tag: local
+  pullPolicy: Never
+
+frontend:
+  image: clinic-frontend
+  tag: local
+  pullPolicy: Never
+
+ingress:
+  host: clinic.local

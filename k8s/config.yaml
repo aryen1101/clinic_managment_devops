@@ -1,0 +1,26 @@
+# Non-secret settings -> ConfigMap. Credentials -> Secret.
+# These plain manifests are used by the CI pipeline (kind cluster).
+# The Helm chart in helm/clinic is the "real" deployment.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: clinic-config
+  namespace: clinic
+data:
+  APP_ENV: "ci"
+  LOG_LEVEL: "INFO"
+  DB_HOST: "clinic-postgres"
+  DB_PORT: "5432"
+  DB_NAME: "clinic"
+---
+# Demo credentials for a throw-away CI cluster only.
+# Real clusters: create the Secret out-of-band (kubectl create secret / Sealed Secrets / External Secrets).
+apiVersion: v1
+kind: Secret
+metadata:
+  name: clinic-db-secret
+  namespace: clinic
+type: Opaque
+stringData:
+  DB_USER: "clinic"
+  DB_PASSWORD: "clinic"

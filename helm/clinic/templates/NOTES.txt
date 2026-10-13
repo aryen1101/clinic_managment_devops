@@ -1,0 +1,17 @@
+CareDesk Clinic Management is deployed as release "{{ .Release.Name }}" in namespace "{{ .Release.Namespace }}".
+
+Check it:
+  kubectl get pods,svc,ingress,hpa -n {{ .Release.Namespace }}
+
+{{- if .Values.ingress.enabled }}
+
+Open:  http://{{ .Values.ingress.host }}
+  (add "127.0.0.1 {{ .Values.ingress.host }}" to your hosts file and run "minikube tunnel" on Minikube)
+{{- end }}
+
+Without ingress:
+  kubectl port-forward -n {{ .Release.Namespace }} svc/{{ include "clinic.frontend" . }} 8080:80   ->  http://localhost:8080
+  kubectl port-forward -n {{ .Release.Namespace }} svc/{{ include "clinic.backend" . }} 8000:8000  ->  http://localhost:8000/docs
+
+Load demo data:
+  kubectl exec -n {{ .Release.Namespace }} deploy/{{ include "clinic.backend" . }} -- python -m app.seed

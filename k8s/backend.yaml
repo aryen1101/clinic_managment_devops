@@ -1,0 +1,64 @@
+# IMAGE_OWNER and IMAGE_TAG are replaced by the CI pipeline (sed) with the GHCR owner and commit SHA.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: clinic-backend
+  namespace: clinic
+  labels: {app: clinic-backend}
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: clinic-backend}
+  template:
+    metadata:
+      labels: {app: clinic-backend}
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: backend
+          image: ghcr.io/IMAGE_OWNER/clinic-backend:IMAGE_TAG
+          imagePullPolicy: IfNotPresent
+          ports: [{containerPort: 8000, name: http}]
+          envFrom:
+            - configMapRef: {name: clinic-config}
+          env:
+            - name: DB_USER
+              valueFrom: {secretKeyRef: {name: clinic-db-secret, key: DB_USER}}
+            - name: DB_PASSWORD
+              valueFrom: {secretKeyRef: {name: clinic-db-secret, key: DB_PASSWORD}}
+          startupProbe:          # gives migrations time to finish
+            httpGet: {path: /health, port: http}
+            periodSeconds: 3
+            failureThreshold: 40
+          livenessProbe:
+            httpGet: {path: /health, port: http}
+            periodSeconds: 15
+          readinessProbe:
+            httpGet: {path: /ready, port: http}
+            periodSeconds: 10
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {cpu: 500m, memory: 512Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: ["ALL"]}
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: clinic-backend
+  namespace: clinic
+  labels: {app: clinic-backend}
+spec:
+  type: ClusterIP
+  selector: {app: clinic-backend}
+  ports: [{port: 8000, targetPort: http, name: http}]

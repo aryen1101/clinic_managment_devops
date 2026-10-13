@@ -1,0 +1,65 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "clinic.frontend" . }}
+  labels:
+    app: {{ include "clinic.frontend" . }}
+    {{- include "clinic.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.hpa.frontend.enabled }}
+  replicas: {{ .Values.frontend.replicas }}
+  {{- end }}
+  selector:
+    matchLabels:
+      app: {{ include "clinic.frontend" . }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: {maxUnavailable: 0, maxSurge: 1}
+  template:
+    metadata:
+      labels:
+        app: {{ include "clinic.frontend" . }}
+        {{- include "clinic.labels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: frontend
+          image: {{ include "clinic.image" (dict "name" "frontend" "cfg" .Values.frontend) }}
+          imagePullPolicy: {{ .Values.frontend.pullPolicy }}
+          ports:
+            - {name: http, containerPort: 8080}
+          env:
+            - name: BACKEND_URL
+              value: "http://{{ include "clinic.backend" . }}:8000"
+          livenessProbe:
+            httpGet: {path: /nginx-health, port: http}
+            periodSeconds: 15
+          readinessProbe:
+            httpGet: {path: /nginx-health, port: http}
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.frontend.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: ["ALL"]}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "clinic.frontend" . }}
+  labels:
+    app: {{ include "clinic.frontend" . }}
+    {{- include "clinic.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    app: {{ include "clinic.frontend" . }}
+  ports:
+    - {name: http, port: 80, targetPort: http}

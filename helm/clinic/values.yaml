@@ -1,0 +1,64 @@
+# Default values for the clinic chart.
+# Install:  helm upgrade --install clinic ./helm/clinic -n clinic --create-namespace
+# Override per environment with -f values-dev.yaml / values-prod.yaml / values-gitops.yaml
+
+imagePullSecrets: []        # e.g. [{name: ghcr-pull}] if your GHCR packages are private
+
+config:
+  appEnv: production
+  logLevel: INFO
+
+backend:
+  image: ghcr.io/YOUR_GITHUB_USERNAME/clinic-backend
+  tag: ""                   # set to a commit SHA (CI / values-gitops.yaml). Never "latest".
+  pullPolicy: IfNotPresent
+  replicas: 2               # ignored when the HPA is enabled
+  resources:
+    requests: {cpu: 100m, memory: 128Mi}
+    limits: {cpu: 500m, memory: 512Mi}
+
+frontend:
+  image: ghcr.io/YOUR_GITHUB_USERNAME/clinic-frontend
+  tag: ""
+  pullPolicy: IfNotPresent
+  replicas: 2
+  resources:
+    requests: {cpu: 50m, memory: 64Mi}
+    limits: {cpu: 200m, memory: 128Mi}
+
+postgres:
+  image: postgres:17-alpine
+  database: clinic
+  username: clinic
+  password: clinic           # DEMO ONLY. For real environments use existingSecret.
+  existingSecret: ""         # name of a Secret with keys DB_USER and DB_PASSWORD
+  storage: 1Gi
+  storageClass: ""           # "" = cluster default (minikube: standard, EKS: gp2/gp3)
+
+ingress:
+  enabled: true
+  className: nginx
+  host: clinic.local
+  tls: false
+
+hpa:
+  backend:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 70
+  frontend:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 4
+    targetCPUUtilizationPercentage: 80
+
+monitoring:
+  # Requires kube-prometheus-stack (CRDs). Templates are skipped automatically if the CRDs are missing.
+  serviceMonitor:
+    enabled: true
+    releaseLabel: kube-prometheus-stack   # must match the Prometheus Helm release name
+  prometheusRule:
+    enabled: true
+  grafanaDashboard:
+    enabled: true

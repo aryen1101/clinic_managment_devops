@@ -36,3 +36,5 @@ crash.log
 .DS_Store
 Thumbs.db
 *.log
+
+docs

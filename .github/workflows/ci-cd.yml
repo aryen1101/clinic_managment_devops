@@ -1,0 +1,251 @@
+name: Clinic CI/CD
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ["**.md", "docs/**"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io
+  PYTHON_VERSION: "3.13"
+  NODE_VERSION: "22"
+
+jobs:
+  test:
+    name: Test (pytest + frontend build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: backend/requirements-dev.txt
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: pip install -r requirements-dev.txt
+
+      - name: Lint (ruff)
+        working-directory: backend
+        run: ruff check .
+
+      - name: Run tests with coverage
+        working-directory: backend
+        run: pytest -v --cov=app --cov-report=term-missing --junitxml=pytest-report.xml
+
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-report
+          path: backend/pytest-report.xml
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+
+  security:
+    name: Security (SAST, SCA, secrets, IaC)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: SAST - Bandit (Python code)
+        run: |
+          pip install bandit
+          bandit -r backend/app -ll
+
+      - name: SCA - pip-audit (Python dependencies)
+        run: |
+          pip install pip-audit
+          pip-audit -r backend/requirements.txt
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: SCA - npm audit (frontend dependencies)
+        working-directory: frontend
+        run: |
+          npm ci
+          npm audit --audit-level=high
+
+      - name: Secret scanning - Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install Trivy
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq wget gnupg
+          wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | gpg --dearmor | sudo tee /usr/share/keyrings/trivy.gpg > /dev/null
+          echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb generic main" | sudo tee /etc/apt/sources.list.d/trivy.list
+          sudo apt-get update -qq && sudo apt-get install -y -qq trivy
+          trivy --version
+
+      - name: IaC scan - Trivy config (Dockerfiles, k8s, Helm, Terraform) - report only
+        run: trivy config --severity HIGH,CRITICAL --exit-code 0 .
+
+  build-scan-push:
+    name: Build, scan & push images
+    needs: [test, security]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      owner: ${{ steps.vars.outputs.owner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compute image names
+        id: vars
+        run: |
+          OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          echo "owner=$OWNER" >> "$GITHUB_OUTPUT"
+          echo "BACKEND_IMAGE=${{ env.REGISTRY }}/$OWNER/clinic-backend:${{ github.sha }}" >> "$GITHUB_ENV"
+          echo "FRONTEND_IMAGE=${{ env.REGISTRY }}/$OWNER/clinic-frontend:${{ github.sha }}" >> "$GITHUB_ENV"
+
+      - name: Build images (tag = commit SHA)
+        run: |
+          docker build -t "$BACKEND_IMAGE" ./backend
+          docker build -t "$FRONTEND_IMAGE" ./frontend
+          docker images | grep clinic
+
+      - name: Install Trivy
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq wget gnupg
+          wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | gpg --dearmor | sudo tee /usr/share/keyrings/trivy.gpg > /dev/null
+          echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb generic main" | sudo tee /etc/apt/sources.list.d/trivy.list
+          sudo apt-get update -qq && sudo apt-get install -y -qq trivy
+
+      - name: Trivy scan - backend image (gate)
+        run: trivy image --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 --ignorefile security/.trivyignore "$BACKEND_IMAGE"
+
+      - name: Trivy scan - frontend image (gate)
+        run: trivy image --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 --ignorefile security/.trivyignore "$FRONTEND_IMAGE"
+
+      - name: Log in to GitHub Container Registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push images to GHCR
+        if: github.event_name != 'pull_request'
+        run: |
+          docker push "$BACKEND_IMAGE"
+          docker push "$FRONTEND_IMAGE"
+
+  deploy-kind:
+    name: Deploy to Kubernetes (kind)
+    if: github.event_name != 'pull_request'
+    needs: build-scan-push
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    env:
+      OWNER: ${{ needs.build-scan-push.outputs.owner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create kind cluster
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: clinic-ci
+
+      - name: Log in to GHCR and load images into kind
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          for app in backend frontend; do
+            docker pull "ghcr.io/$OWNER/clinic-$app:${{ github.sha }}"
+            kind load docker-image "ghcr.io/$OWNER/clinic-$app:${{ github.sha }}" --name clinic-ci
+          done
+
+      - name: Deploy manifests with this commit's images
+        run: |
+          sed -i "s|IMAGE_OWNER|$OWNER|g; s|IMAGE_TAG|${{ github.sha }}|g" k8s/*.yaml
+          kubectl apply -f k8s/namespace.yaml
+          kubectl apply -f k8s/
+          kubectl -n clinic rollout status deploy/clinic-postgres --timeout=180s
+          kubectl -n clinic rollout status deploy/clinic-backend --timeout=240s
+          kubectl -n clinic rollout status deploy/clinic-frontend --timeout=180s
+          kubectl -n clinic get deploy,pods,svc -o wide
+
+      - name: Smoke test
+        run: |
+          kubectl -n clinic port-forward svc/clinic-frontend 8080:80 >/dev/null 2>&1 &
+          sleep 5
+          curl -fsS http://localhost:8080/nginx-health
+          curl -fsS http://localhost:8080/health
+          curl -fsS http://localhost:8080/ready
+          curl -fsS http://localhost:8080/api/stats
+          echo
+          echo "Smoke test passed"
+
+      - name: Debug info on failure
+        if: failure()
+        run: |
+          kubectl -n clinic get all
+          kubectl -n clinic describe pods
+          kubectl -n clinic logs deploy/clinic-backend --tail=100 || true
+          kubectl get events -n clinic --sort-by=.lastTimestamp
+
+  gitops-update:
+    name: GitOps - bump image tag
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: deploy-kind
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Write new image tag into values-gitops.yaml
+        run: |
+          OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          cat > helm/clinic/values-gitops.yaml <<EOF
+          # Managed by CI (gitops-update job). Argo CD deploys whatever is written here.
+          backend:
+            image: ghcr.io/$OWNER/clinic-backend
+            tag: "${{ github.sha }}"
+          frontend:
+            image: ghcr.io/$OWNER/clinic-frontend
+            tag: "${{ github.sha }}"
+          EOF
+          cat helm/clinic/values-gitops.yaml
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add helm/clinic/values-gitops.yaml
+          git diff --cached --quiet && echo "No change" && exit 0
+          git commit -m "chore(gitops): deploy ${GITHUB_SHA::7} [skip ci]"
+          git push

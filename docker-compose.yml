@@ -1,0 +1,53 @@
+name: clinic
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-clinic}
+      POSTGRES_USER: ${POSTGRES_USER:-clinic}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-clinic}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [clinic-net]
+    restart: unless-stopped
+
+  backend:
+    build: ./backend
+    image: clinic-backend:local
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-clinic}:${POSTGRES_PASSWORD:-clinic}@postgres:5432/${POSTGRES_DB:-clinic}
+      APP_ENV: docker
+      LOG_LEVEL: INFO
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    networks: [clinic-net]
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    image: clinic-frontend:local
+    environment:
+      BACKEND_URL: http://backend:8000
+    depends_on:
+      backend:
+        condition: service_healthy  
+    ports:
+      - "${FRONTEND_PORT:-3000}:8080"
+    networks: [clinic-net]
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+
+networks:
+  clinic-net:
+    driver: bridge

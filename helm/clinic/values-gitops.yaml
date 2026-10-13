@@ -1,8 +1,7 @@
 # Managed by CI (gitops-update job). Argo CD deploys whatever is written here.
-# Until the first pipeline run, replace YOUR_GITHUB_USERNAME and the tags manually.
 backend:
-  image: ghcr.io/YOUR_GITHUB_USERNAME/clinic-backend
-  tag: "REPLACE_WITH_COMMIT_SHA"
+  image: ghcr.io/aryen1101/clinic-backend
+  tag: "3289cf2f91d2b1d71c23f6696307e84e2c78c296"
 frontend:
-  image: ghcr.io/YOUR_GITHUB_USERNAME/clinic-frontend
-  tag: "REPLACE_WITH_COMMIT_SHA"
+  image: ghcr.io/aryen1101/clinic-frontend
+  tag: "3289cf2f91d2b1d71c23f6696307e84e2c78c296"

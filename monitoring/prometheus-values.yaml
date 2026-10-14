@@ -1,0 +1,35 @@
+prometheus:
+  prometheusSpec:
+    # Pick up ServiceMonitors / PrometheusRules from every namespace, not only ones created by this release
+    serviceMonitorSelectorNilUsesHelmValues: false
+    serviceMonitorNamespaceSelector: {}
+    ruleSelectorNilUsesHelmValues: false
+    ruleNamespaceSelector: {}
+    retention: 2d
+    resources:
+      requests: {cpu: 200m, memory: 400Mi}
+
+grafana:
+  enabled: true
+  adminUser: admin
+  # Demo password for a local cluster. Change it (or use grafana.admin.existingSecret) anywhere real.
+  adminPassword: clinic-admin
+  sidecar:
+    dashboards:
+      enabled: true
+      label: grafana_dashboard
+      labelValue: "1"
+      searchNamespace: ALL      # import the clinic dashboard ConfigMap from the app's namespace
+  service:
+    type: ClusterIP
+
+alertmanager:
+  alertmanagerSpec:
+    resources:
+      requests: {cpu: 50m, memory: 64Mi}
+
+# Small local clusters (minikube/kind) do not expose these control-plane components
+kubeEtcd: {enabled: false}
+kubeControllerManager: {enabled: false}
+kubeScheduler: {enabled: false}
+kubeProxy: {enabled: false}

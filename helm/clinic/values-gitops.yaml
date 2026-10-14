@@ -1,7 +1,7 @@
 # Managed by CI (gitops-update job). Argo CD deploys whatever is written here.
 backend:
   image: ghcr.io/aryen1101/clinic-backend
-  tag: "c03c426fe7fb69c75305a4e6c37b16b3f8d868b7"
+  tag: "bbb85bda8f175dce07dd158d5483a3d7c81b1d28"
 frontend:
   image: ghcr.io/aryen1101/clinic-frontend
-  tag: "c03c426fe7fb69c75305a4e6c37b16b3f8d868b7"
+  tag: "bbb85bda8f175dce07dd158d5483a3d7c81b1d28"

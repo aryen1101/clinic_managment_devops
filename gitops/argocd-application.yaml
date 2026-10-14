@@ -1,0 +1,28 @@
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: clinic
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/aryen1101/clinic_managment_devops.git
+    targetRevision: main
+    path: helm/clinic
+    helm:
+      releaseName: clinic
+      valueFiles:
+        - values.yaml
+        - values-gitops.yaml      # image tags written by CI
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: clinic
+  syncPolicy:
+    automated:
+      prune: true                 # delete resources removed from Git
+      selfHeal: true              # undo manual kubectl changes (Git is the source of truth)
+    syncOptions:
+      - CreateNamespace=true

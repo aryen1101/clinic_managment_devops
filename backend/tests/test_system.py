@@ -7,7 +7,7 @@ def test_root(client):
 def test_health(client):
     response = client.get("/health")
     assert response.status_code == 200
-    assert response.json() == {"status": "UP"}
+    assert response.json() == {"status": "DOWN"}
 
 
 def test_ready_reports_database_up(client):

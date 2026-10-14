@@ -1,5 +1,3 @@
-# PostgreSQL for the CI cluster. Uses emptyDir (data is thrown away with the cluster).
-# The Helm chart uses a StatefulSet + PersistentVolumeClaim instead.
 apiVersion: apps/v1
 kind: Deployment
 metadata:

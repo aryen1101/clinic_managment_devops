@@ -1,4 +1,3 @@
-# IMAGE_OWNER and IMAGE_TAG are replaced by the CI pipeline (sed) with the GHCR owner and commit SHA.
 apiVersion: apps/v1
 kind: Deployment
 metadata:

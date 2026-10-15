@@ -11,6 +11,7 @@ The application is the vehicle. The project is the **DevSecOps platform around i
 | **Repository** | https://github.com/aryen1101/clinic_managment_devops |
 | **Successful pipeline run** | https://github.com/aryen1101/clinic_managment_devops/actions/runs/38460482398 |
 | **Presentation + demo video** | [`demo/`](demo/) |
+| **▶️ Watch the demo video online** | [Google Drive](https://drive.google.com/file/d/1ZosvQ1rO4caY2WLrsEr1AtPMkDOQcaNr/view?usp=sharing) |
 
 ---
 
@@ -493,7 +494,9 @@ The Argo CD Application ([`gitops/argocd-application.yaml`](gitops/argocd-applic
 | File | Content |
 |---|---|
 | [`demo/CareDesk-Presentation.pptx`](demo/CareDesk-Presentation.pptx) | Presentation slides |
-| [`demo/CareDesk-Demo.mp4`](demo/CareDesk-Demo.mp4) | Demo video: slides, codebase, a live push through the CI/CD pipeline, Terraform plan, Argo CD sync, Kubernetes, Prometheus and Grafana |
+| [`demo/CareDesk-Demo.mp4`](demo/CareDesk-Demo.mp4) | Demo video: slides, codebase, a CI/CD pipeline run, Terraform plan, Argo CD sync, Kubernetes, Prometheus and Grafana |
+
+▶️ **Watch the video online (no download needed):** https://drive.google.com/file/d/1ZosvQ1rO4caY2WLrsEr1AtPMkDOQcaNr/view?usp=sharing
 
 ---
 

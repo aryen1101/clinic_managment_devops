@@ -506,5 +506,3 @@ The Argo CD Application ([`gitops/argocd-application.yaml`](gitops/argocd-applic
 - **Tag images with the commit SHA.** Every deployment is traceable to a commit, and rollbacks are exact.
 - **GitOps changes how you deploy.** With Argo CD self-heal, manual `kubectl` changes are reverted, so all changes go through Git.
 - **Cost awareness is part of DevOps.** EKS and NAT gateways cost money even on the free tier, so the infrastructure was validated and planned but not left running.
-
-**Next steps:** Amazon RDS instead of in-cluster PostgreSQL · TLS with cert-manager · staff login and roles · centralised logs with Loki.

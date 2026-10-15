@@ -29,7 +29,7 @@ export default function Dashboard({ onNavigate }) {
       <PageHeader
         eyebrow="CLINIC / OVERVIEW"
         title={`${greeting()} 👋`}
-        subtitle="Here’s what’s happening at the clinic today."
+        subtitle="Live update through ci-cd."
         action={<button className="primary" onClick={() => onNavigate('appointments')}>＋ Book appointment</button>}
       />
       <ErrorBanner message={error && `${error}. Is the backend running?`} onRetry={reload} />
